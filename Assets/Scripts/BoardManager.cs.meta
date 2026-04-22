@@ -1,2 +1,13 @@
 fileFormatVersion: 2
 guid: 4fd534bd4e0b6834c9d4334a445dc09d
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - hexTilePrefab: {fileID: 5532391337216272856, guid: 1a6e1058677fea344ad3a358044598c0, type: 3}
+  - boardParent: {fileID: 4424358804877982601, guid: 2b8031ddd3323394fad71ccb109eec2e, type: 3}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

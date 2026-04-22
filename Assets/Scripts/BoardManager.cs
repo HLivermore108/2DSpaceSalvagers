@@ -34,6 +34,13 @@ public class BoardManager : MonoBehaviour
     public float xSpacing = 1f;
     public float ySpacing = 0.87f;
 
+    [Header("Layout Settings")]
+    public LayoutPreset layoutPreset = LayoutPreset.PrototypeArena;
+    public bool usePresetDimensions = true;
+    public bool centerBoardOnOrigin = true;
+    public Vector2 boardOffset = Vector2.zero;
+    public bool applyPrototypeMarkers = true;
+
     [Header("Paint Settings")]
     public bool editMode = true;
     public PaintMode currentPaintMode = PaintMode.ToggleActive;
@@ -55,6 +62,12 @@ public class BoardManager : MonoBehaviour
         Retaliator
     }
 
+    public enum LayoutPreset
+    {
+        Rectangle,
+        PrototypeArena
+    }
+
     private void Awake()
     {
         Instance = this;
@@ -62,7 +75,10 @@ public class BoardManager : MonoBehaviour
 
     private void Start()
     {
+        ApplyPresetDimensions();
         GenerateBoard();
+        ApplyPresetMarkers();
+        PositionBoard();
     }
 
     private void Update()
@@ -90,6 +106,8 @@ public class BoardManager : MonoBehaviour
                 HexTile tile = tileObj.GetComponent<HexTile>();
                 tile.q = q;
                 tile.r = r;
+                tile.isActiveTile = IsTileActiveForLayout(q, r);
+                tile.tileType = HexTile.TileType.Normal;
 
                 tile.RefreshVisual();
 
@@ -155,6 +173,120 @@ public class BoardManager : MonoBehaviour
         }
 
         tile.RefreshVisual();
+    }
+
+    private void ApplyPresetDimensions()
+    {
+        if (!usePresetDimensions)
+        {
+            return;
+        }
+
+        switch (layoutPreset)
+        {
+            case LayoutPreset.PrototypeArena:
+                width = 18;
+                height = 19;
+                xSpacing = 1f;
+                ySpacing = 0.87f;
+                break;
+        }
+    }
+
+    private bool IsTileActiveForLayout(int q, int r)
+    {
+        if (layoutPreset == LayoutPreset.Rectangle)
+        {
+            return true;
+        }
+
+        if (!TryGetPrototypeArenaRange(r, out int startQ, out int length))
+        {
+            return false;
+        }
+
+        return q >= startQ && q < startQ + length;
+    }
+
+    private bool TryGetPrototypeArenaRange(int row, out int startQ, out int length)
+    {
+        startQ = 0;
+        length = 0;
+
+        int[] rowStarts =
+        {
+            1, 1, 1,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            1, 1, 1
+        };
+
+        int[] rowLengths =
+        {
+            16, 16, 16,
+            17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
+            16, 16, 16
+        };
+
+        if (row < 0 || row >= rowStarts.Length)
+        {
+            return false;
+        }
+
+        startQ = rowStarts[row];
+        length = rowLengths[row];
+        return true;
+    }
+
+    private void ApplyPresetMarkers()
+    {
+        if (!applyPrototypeMarkers || layoutPreset != LayoutPreset.PrototypeArena)
+        {
+            return;
+        }
+
+        SetTileTypeIfActive(1, 1, HexTile.TileType.PlayerStart1);
+        SetTileTypeIfActive(15, 1, HexTile.TileType.PlayerStart2);
+        SetTileTypeIfActive(1, 17, HexTile.TileType.PlayerStart3);
+        SetTileTypeIfActive(15, 17, HexTile.TileType.PlayerStart4);
+        SetTileTypeIfActive(8, 9, HexTile.TileType.Retaliator);
+    }
+
+    private void SetTileTypeIfActive(int q, int r, HexTile.TileType tileType)
+    {
+        HexTile tile = GetTile(q, r);
+        if (tile == null || !tile.isActiveTile)
+        {
+            return;
+        }
+
+        if (tileType == HexTile.TileType.Retaliator)
+        {
+            SetUniqueTileType(tile, tileType);
+        }
+        else
+        {
+            tile.tileType = tileType;
+            tile.RefreshVisual();
+        }
+    }
+
+    private void PositionBoard()
+    {
+        if (boardParent == null)
+        {
+            return;
+        }
+
+        Vector3 localPosition = boardParent.localPosition;
+
+        if (!centerBoardOnOrigin || !GetActiveBoardBounds(out Bounds bounds))
+        {
+            boardParent.localPosition = new Vector3(boardOffset.x, boardOffset.y, localPosition.z);
+            return;
+        }
+
+        Vector3 centeredPosition = new Vector3(boardOffset.x - bounds.center.x, boardOffset.y - bounds.center.y, localPosition.z);
+        boardParent.localPosition = centeredPosition;
     }
 
     private void SetUniqueTileType(HexTile tile, HexTile.TileType type)
@@ -345,23 +477,92 @@ public class BoardManager : MonoBehaviour
         }
     }
 
+    public bool GetActiveBoardBounds(out Bounds bounds)
+    {
+        bounds = default;
+        bool hasBounds = false;
+
+        foreach (HexTile tile in allTiles)
+        {
+            if (tile == null || !tile.isActiveTile)
+            {
+                continue;
+            }
+
+            SpriteRenderer tileRenderer = tile.GetComponent<SpriteRenderer>();
+            Bounds tileBounds = tileRenderer != null ? tileRenderer.bounds : new Bounds(tile.transform.position, Vector3.one);
+
+            if (!hasBounds)
+            {
+                bounds = tileBounds;
+                hasBounds = true;
+                continue;
+            }
+
+            bounds.Encapsulate(tileBounds);
+        }
+
+        return hasBounds;
+    }
+
     private void HandleHotkeys()
     {
-        if (Input.GetKeyDown(KeyCode.Alpha1)) SetMode(PaintMode.ToggleActive);
-        if (Input.GetKeyDown(KeyCode.Alpha2)) SetMode(PaintMode.Normal);
-        if (Input.GetKeyDown(KeyCode.Alpha3)) SetMode(PaintMode.PlayerStart1);
-        if (Input.GetKeyDown(KeyCode.Alpha4)) SetMode(PaintMode.PlayerStart2);
-        if (Input.GetKeyDown(KeyCode.Alpha5)) SetMode(PaintMode.PlayerStart3);
-        if (Input.GetKeyDown(KeyCode.Alpha6)) SetMode(PaintMode.PlayerStart4);
-        if (Input.GetKeyDown(KeyCode.Alpha7)) SetMode(PaintMode.T1);
-        if (Input.GetKeyDown(KeyCode.Alpha8)) SetMode(PaintMode.T2);
-        if (Input.GetKeyDown(KeyCode.Alpha9)) SetMode(PaintMode.T3);
-        if (Input.GetKeyDown(KeyCode.Alpha0)) SetMode(PaintMode.Retaliator);
+        if (TryCheckHotkeyPressed(Hotkey.Digit1)) SetMode(PaintMode.ToggleActive);
+        if (TryCheckHotkeyPressed(Hotkey.Digit2)) SetMode(PaintMode.Normal);
+        if (TryCheckHotkeyPressed(Hotkey.Digit3)) SetMode(PaintMode.PlayerStart1);
+        if (TryCheckHotkeyPressed(Hotkey.Digit4)) SetMode(PaintMode.PlayerStart2);
+        if (TryCheckHotkeyPressed(Hotkey.Digit5)) SetMode(PaintMode.PlayerStart3);
+        if (TryCheckHotkeyPressed(Hotkey.Digit6)) SetMode(PaintMode.PlayerStart4);
+        if (TryCheckHotkeyPressed(Hotkey.Digit7)) SetMode(PaintMode.T1);
+        if (TryCheckHotkeyPressed(Hotkey.Digit8)) SetMode(PaintMode.T2);
+        if (TryCheckHotkeyPressed(Hotkey.Digit9)) SetMode(PaintMode.T3);
+        if (TryCheckHotkeyPressed(Hotkey.Digit0)) SetMode(PaintMode.Retaliator);
 
-        if (Input.GetKeyDown(KeyCode.P))
+        if (TryCheckHotkeyPressed(Hotkey.PrintBoard))
         {
             PrintBoardData();
         }
+    }
+
+    private enum Hotkey
+    {
+        Digit0,
+        Digit1,
+        Digit2,
+        Digit3,
+        Digit4,
+        Digit5,
+        Digit6,
+        Digit7,
+        Digit8,
+        Digit9,
+        PrintBoard
+    }
+
+    private bool TryCheckHotkeyPressed(Hotkey hotkey)
+    {
+#if ENABLE_LEGACY_INPUT_MANAGER
+        return hotkey switch
+        {
+            Hotkey.Digit0 => Input.GetKeyDown(KeyCode.Alpha0),
+            Hotkey.Digit1 => Input.GetKeyDown(KeyCode.Alpha1),
+            Hotkey.Digit2 => Input.GetKeyDown(KeyCode.Alpha2),
+            Hotkey.Digit3 => Input.GetKeyDown(KeyCode.Alpha3),
+            Hotkey.Digit4 => Input.GetKeyDown(KeyCode.Alpha4),
+            Hotkey.Digit5 => Input.GetKeyDown(KeyCode.Alpha5),
+            Hotkey.Digit6 => Input.GetKeyDown(KeyCode.Alpha6),
+            Hotkey.Digit7 => Input.GetKeyDown(KeyCode.Alpha7),
+            Hotkey.Digit8 => Input.GetKeyDown(KeyCode.Alpha8),
+            Hotkey.Digit9 => Input.GetKeyDown(KeyCode.Alpha9),
+            Hotkey.PrintBoard => Input.GetKeyDown(KeyCode.P),
+            _ => false
+        };
+#else
+        // The project is currently using the new Input System in Player Settings,
+        // but the package namespace is not available in code yet. Disable hotkeys
+        // until a proper input action asset is wired up.
+        return false;
+#endif
     }
 
     private void SetMode(PaintMode mode)
